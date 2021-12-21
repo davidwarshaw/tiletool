@@ -21,6 +21,7 @@ var parseCmd *cobra.Command
 // Flags
 var xOffset uint16
 var yOffset uint16
+var tileSize uint16
 var transform bool
 
 // Internal vars
@@ -257,16 +258,18 @@ func init() {
 
 	parseCmd = &cobra.Command{
 		Use:   "parse <filename>",
-		Short: "Parse a tileset from an image",
+		Short: "Parse a tileset from an image.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				fmt.Println("One arg required: <filename>")
-				fmt.Println("Try 'tiletool --help' for more information.")
+				fmt.Println("Use \"tiletool parse --help\" for more information.")
 				os.Exit(1)
 			}
 			return nil
 		},
 		PreRun: func(cmd *cobra.Command, args []string) {
+			tileWidth = int(tileSize)
+			tileHeight = int(tileSize)
 			if transform {
 				transformations = CreateTransformations()
 			}
@@ -290,8 +293,9 @@ func init() {
 			}
 		},
 	}
-	parseCmd.Flags().Uint16VarP(&xOffset, "x-offset", "x", 0, "(default 0)")
-	parseCmd.Flags().Uint16VarP(&yOffset, "y-offset", "y", 0, "(default 0)")
-	parseCmd.Flags().BoolVarP(&transform, "transform", "t", false, "(default false)")
+	parseCmd.Flags().Uint16VarP(&xOffset, "x-offset", "x", 0, "Start at this x coordinate (default 0)")
+	parseCmd.Flags().Uint16VarP(&yOffset, "y-offset", "y", 0, "Start at this y coordinate (default 0)")
+	parseCmd.Flags().Uint16VarP(&tileSize, "size", "s", 16, "Tile size to parse. Tiles are square")
+	parseCmd.Flags().BoolVarP(&transform, "transform", "t", false, "Allow tiles to be flipped and rotated (default false)")
 
 }

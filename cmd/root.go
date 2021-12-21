@@ -11,7 +11,7 @@ var Verbose bool
 
 var rootCmd = &cobra.Command{
 	Use:   "tiletool",
-	Short: "Tileset tool",
+	Short: "Command line interface utility for tilesets",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 		os.Exit(0)

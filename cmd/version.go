@@ -7,11 +7,13 @@ import (
 )
 
 var Version string
+var Commit string
+var Date string
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print the git hash version of tiletool",
+	Short: "Output the version of tiletool",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("tiletool version %s\n", Version)
+		fmt.Printf("tiletool version %s, built %s\n", Version, Date)
 	},
 }

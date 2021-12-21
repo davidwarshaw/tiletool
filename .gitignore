@@ -1,3 +1,6 @@
+# tiletool specific
+tileset.png
+
 # Binaries for programs and plugins
 *.exe
 *.exe~
