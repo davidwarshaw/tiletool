@@ -215,11 +215,10 @@ func CreateTransformations() []string {
 	return transformations
 }
 
-func Parse(filename string, transformations []string, verbose bool) ([]*image.NRGBA, []FrequencyTile) {
+func Parse(filename string, transformations []string, verbose bool) ([]*image.NRGBA, []FrequencyTile, error) {
 	img, err := imaging.Open(filename, imaging.AutoOrientation(true))
 	if err != nil {
-		fmt.Printf("Error opening file: %s\n", err.Error())
-		os.Exit(1)
+		return nil, nil, err
 	}
 
 	nrgba := imageToNRGBA(img)
@@ -236,20 +235,33 @@ func Parse(filename string, transformations []string, verbose bool) ([]*image.NR
 
 	frequencyTiles := computeFreq(nrgba, tiles, transformations)
 
-	return tiles, frequencyTiles
+	return tiles, frequencyTiles, nil
 }
 
 func outputTable(frequencyTiles []FrequencyTile) {
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
-	t.AppendHeader(table.Row{"Tileset Index", "Count", "First Location", "Transformation Required"})
+	if transform {
+		t.AppendHeader(table.Row{"Tileset Index", "Count", "First Location", "Transformation Required"})
+	} else {
+		t.AppendHeader(table.Row{"Tileset Index", "Count", "First Location"})
+	}
+
 	for i, frequencyTile := range frequencyTiles {
-		t.AppendRow(table.Row{
-			fmt.Sprintf("%d", i),
-			fmt.Sprintf("%d", frequencyTile.Count),
-			fmt.Sprintf("%v", frequencyTile.FirstLocation),
-			fmt.Sprintf("%t", frequencyTile.Transformations),
-		})
+		if transform {
+			t.AppendRow(table.Row{
+				fmt.Sprintf("%d", i),
+				fmt.Sprintf("%d", frequencyTile.Count),
+				fmt.Sprintf("%v", frequencyTile.FirstLocation),
+				fmt.Sprintf("%t", frequencyTile.Transformations),
+			})
+		} else {
+			t.AppendRow(table.Row{
+				fmt.Sprintf("%d", i),
+				fmt.Sprintf("%d", frequencyTile.Count),
+				fmt.Sprintf("%v", frequencyTile.FirstLocation),
+			})
+		}
 	}
 	t.Render()
 }
@@ -259,10 +271,11 @@ func init() {
 	parseCmd = &cobra.Command{
 		Use:   "parse <filename>",
 		Short: "Parse a tileset from an image.",
+		Long:  "The parse command processes an image and identifies the set of unique tiles that compose it, which are then output as a tileset. Verbose output will list a frequency count for all tiles, their first location in the image and whether it was necessary to transform them by flipping or rotation.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 1 {
-				fmt.Println("One arg required: <filename>")
-				fmt.Println("Use \"tiletool parse --help\" for more information.")
+				fmt.Fprintln(os.Stderr, "One arg required: <filename>")
+				fmt.Fprintln(os.Stderr, "Use \"tiletool parse --help\" for more information.")
 				os.Exit(1)
 			}
 			return nil
@@ -275,27 +288,36 @@ func init() {
 			}
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			verbose, _ := cmd.Flags().GetBool("verbose")
+			// verbose, _ := cmd.Flags().GetBool("verbose")
+			// output, _ := cmd.Flags().GetString("output")
 			filename := args[0]
 
-			tiles, frequencyTiles := Parse(filename, transformations, verbose)
-			if verbose {
+			tiles, frequencyTiles, err := Parse(filename, transformations, Verbose)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error opening file: %s\n", err.Error())
+				os.Exit(1)
+			}
+			if Verbose {
 				fmt.Printf("Parsed %d total tiles, %d unique\n", len(tiles), len(frequencyTiles))
 				outputTable(frequencyTiles)
 			}
 
 			tileset := createTileset(frequencyTiles)
 
-			err := imaging.Save(tileset, "tileset.png")
+			err = imaging.Save(tileset, Output)
 			if err != nil {
-				fmt.Printf("Error saving file: %s\n", err.Error())
+				if strings.Contains(err.Error(), "unsupported image format") {
+					fmt.Fprintf(os.Stderr, "Error: the tileset could not be saved because the output extension is invalid. %s\n", ValidOutputExtensionsMessage)
+					os.Exit(1)
+				}
+				fmt.Fprintf(os.Stderr, "Error saving file: %s\n", err.Error())
 				os.Exit(1)
 			}
 		},
 	}
-	parseCmd.Flags().Uint16VarP(&xOffset, "x-offset", "x", 0, "Start at this x coordinate (default 0)")
-	parseCmd.Flags().Uint16VarP(&yOffset, "y-offset", "y", 0, "Start at this y coordinate (default 0)")
-	parseCmd.Flags().Uint16VarP(&tileSize, "size", "s", 16, "Tile size to parse. Tiles are square")
-	parseCmd.Flags().BoolVarP(&transform, "transform", "t", false, "Allow tiles to be flipped and rotated (default false)")
+	parseCmd.Flags().Uint16VarP(&xOffset, "x-offset", "x", 0, "start at this x coordinate (default 0)")
+	parseCmd.Flags().Uint16VarP(&yOffset, "y-offset", "y", 0, "start at this y coordinate (default 0)")
+	parseCmd.Flags().Uint16VarP(&tileSize, "size", "s", 16, "tile size to parse. Tiles are square")
+	parseCmd.Flags().BoolVarP(&transform, "transform", "t", false, "allow tiles to be flipped and rotated (default false)")
 
 }
