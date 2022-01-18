@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 	"testing"
+
+	i "github.com/davidwarshaw/tiletool/cmd/internal"
 )
 
 type parseTest struct {
@@ -30,10 +32,19 @@ func TestParseBase(t *testing.T) {
 
 		name := fmt.Sprintf("%s-%t", tc.filename, tc.transform)
 		t.Run(name, func(t *testing.T) {
+			parseConfig := i.ParseConfig{
+				TileWidth:  tileSize,
+				TileHeight: tileSize,
+				XOffset:    xOffset,
+				YOffset:    yOffset,
+			}
+
 			if tc.transform {
 				transformations = CreateTransformations()
 			}
-			tiles, frequencyTiles := Parse(tc.filename, transformations, verbose)
+
+			img := i.Open(tc.filename, verbose)
+			tiles, frequencyTiles, _ := parse(img, parseConfig, transformations, verbose)
 			t.Logf("Parsed %d total tiles, %d unique\n", len(tiles), len(frequencyTiles))
 			for i, frequencyTile := range frequencyTiles {
 				t.Logf("Index: %d \tHash: %s \tCount: %d \tFirst Location: %v \tTransformation %t\n", i, frequencyTile.Hash, frequencyTile.Count, frequencyTile.FirstLocation, frequencyTile.Transformations)

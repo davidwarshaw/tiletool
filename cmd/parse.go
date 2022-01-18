@@ -5,8 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"image"
-	"image/color"
-	"image/draw"
 	"os"
 	"sort"
 	"strings"
@@ -14,70 +12,17 @@ import (
 	"github.com/disintegration/imaging"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/spf13/cobra"
+
+	i "github.com/davidwarshaw/tiletool/cmd/internal"
 )
 
 var parseCmd *cobra.Command
 
 // Flags
-var xOffset uint16
-var yOffset uint16
-var tileSize uint16
+var xOffset int
+var yOffset int
+
 var transform bool
-
-// Internal vars
-var tileWidth = 16
-var tileHeight = 16
-
-var tilesetColumns = 10
-
-var transformations = []string{}
-
-type FrequencyTile struct {
-	Hash            string
-	Image           *image.NRGBA
-	Count           int
-	FirstLocation   image.Point
-	Transformations bool
-}
-
-func getContigousSubPixels(img *image.NRGBA) []byte {
-	rect := img.Bounds()
-	nrgba := image.NewNRGBA(rect)
-	draw.Draw(nrgba, rect, img, rect.Min, draw.Src)
-	return nrgba.Pix
-}
-
-func imageToNRGBA(src image.Image) *image.NRGBA {
-	if dst, ok := src.(*image.NRGBA); ok {
-		return dst
-	}
-	b := src.Bounds()
-	dst := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
-	draw.Draw(dst, dst.Bounds(), src, b.Min, draw.Src)
-	return dst
-}
-
-func cropTiles(img *image.NRGBA, width, height int) []*image.NRGBA {
-
-	columns := (img.Bounds().Dx() - int(xOffset)) / width
-	rows := (img.Bounds().Dy() - int(yOffset)) / height
-
-	crops := []*image.NRGBA{}
-	for column := 0; column < columns; column++ {
-		for row := 0; row < rows; row++ {
-			x := (column * width) + int(xOffset)
-			y := (row * height) + int(yOffset)
-			min := image.Point{x, y}
-			max := image.Point{x + width, y + height}
-			rectangle := image.Rectangle{min, max}
-
-			crop := img.SubImage(rectangle).(*image.NRGBA)
-			crops = append(crops, crop)
-		}
-	}
-
-	return crops
-}
 
 func transformCrop(transformType string, crop *image.NRGBA) *image.NRGBA {
 	transformTypes := strings.Split(transformType, "-")
@@ -123,14 +68,14 @@ func transformCrop(transformType string, crop *image.NRGBA) *image.NRGBA {
 }
 
 func hashNrgba(nrgba *image.NRGBA) string {
-	pixels := getContigousSubPixels(nrgba)
+	pixels := i.GetContigousSubPixels(nrgba)
 	shaBytes := md5.Sum(pixels)
 	hash := hex.EncodeToString(shaBytes[:])
 	return hash
 }
 
-func computeFreq(img *image.NRGBA, crops []*image.NRGBA, transformations []string) []FrequencyTile {
-	frequencyTiles := []FrequencyTile{}
+func computeFreq(img *image.NRGBA, crops []*image.NRGBA, transformations []string) []i.FrequencyTile {
+	frequencyTiles := []i.FrequencyTile{}
 	lookup := map[string]int{}
 	tileIndex := 0
 	fmt.Println()
@@ -164,7 +109,7 @@ func computeFreq(img *image.NRGBA, crops []*image.NRGBA, transformations []strin
 		if index, ok := lookup[baseOrientationHash]; ok {
 			frequencyTiles[index].Count++
 		} else {
-			frequencyTile := FrequencyTile{
+			frequencyTile := i.FrequencyTile{
 				Hash:            baseOrientationHash,
 				Image:           crop,
 				Count:           1,
@@ -184,27 +129,8 @@ func computeFreq(img *image.NRGBA, crops []*image.NRGBA, transformations []strin
 	return frequencyTiles
 }
 
-func createTileset(frequencyTiles []FrequencyTile) *image.NRGBA {
-	columns := tilesetColumns
-	rows := (len(frequencyTiles) / columns) + 1
-
-	width := tilesetColumns * tileWidth
-	height := rows * tileHeight
-
-	tileset := imaging.New(width, height, color.Transparent)
-
-	for i, frequencyTile := range frequencyTiles {
-		column := i % tilesetColumns
-		row := i / tilesetColumns
-		position := image.Point{X: column * tileWidth, Y: row * tileHeight}
-		opacity := 1.0
-		tileset = imaging.Overlay(tileset, frequencyTile.Image, position, opacity)
-	}
-
-	return tileset
-}
-
 func CreateTransformations() []string {
+	var transformations []string
 	for _, flip := range []string{"flipH", "flipV", "none"} {
 		for _, rotation := range []string{"rotate90", "rotate180", "rotate270", "none"} {
 			transformations = append(transformations, fmt.Sprintf("%s-%s", flip, rotation))
@@ -215,30 +141,23 @@ func CreateTransformations() []string {
 	return transformations
 }
 
-func Parse(filename string, transformations []string, verbose bool) ([]*image.NRGBA, []FrequencyTile, error) {
-	img, err := imaging.Open(filename, imaging.AutoOrientation(true))
-	if err != nil {
-		return nil, nil, err
-	}
-
-	nrgba := imageToNRGBA(img)
-
+func parse(img *image.NRGBA, parseConfig i.ParseConfig, transformations []string, verbose bool) ([]*image.NRGBA, []i.FrequencyTile, error) {
 	if verbose {
-		bounds := nrgba.Bounds()
+		bounds := img.Bounds()
 		imgSize := fmt.Sprintf("%dx%d", bounds.Dx(), bounds.Dy())
-		tileSize := fmt.Sprintf("%dx%d", tileWidth, tileHeight)
-		leftOverSize := fmt.Sprintf("%dx%d", bounds.Dx()%tileWidth, bounds.Dy()%tileHeight)
+		tileSize := fmt.Sprintf("%dx%d", parseConfig.TileWidth, parseConfig.TileHeight)
+		leftOverSize := fmt.Sprintf("%dx%d", bounds.Dx()%parseConfig.TileWidth, bounds.Dy()%parseConfig.TileHeight)
 		offsetSize := fmt.Sprintf("%dx%d", xOffset, yOffset)
-		fmt.Printf("Parsing %s: %s image (offset by %s) for %s tiles with %s remainder\n", filename, imgSize, offsetSize, tileSize, leftOverSize)
+		fmt.Printf("Parsing %s image (offset by %s) for %s tiles with %s remainder\n", imgSize, offsetSize, tileSize, leftOverSize)
 	}
-	tiles := cropTiles(nrgba, tileWidth, tileHeight)
+	tiles := i.CropTiles(img, parseConfig)
 
-	frequencyTiles := computeFreq(nrgba, tiles, transformations)
+	frequencyTiles := computeFreq(img, tiles, transformations)
 
 	return tiles, frequencyTiles, nil
 }
 
-func outputTable(frequencyTiles []FrequencyTile) {
+func outputTable(frequencyTiles []i.FrequencyTile) {
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
 	if transform {
@@ -280,19 +199,23 @@ func init() {
 			}
 			return nil
 		},
-		PreRun: func(cmd *cobra.Command, args []string) {
-			tileWidth = int(tileSize)
-			tileHeight = int(tileSize)
+		Run: func(cmd *cobra.Command, args []string) {
+			filename := args[0]
+
+			parseConfig := i.ParseConfig{
+				TileWidth:  tileSize,
+				TileHeight: tileSize,
+				XOffset:    xOffset,
+				YOffset:    yOffset,
+			}
+			var transformations []string
 			if transform {
 				transformations = CreateTransformations()
 			}
-		},
-		Run: func(cmd *cobra.Command, args []string) {
-			// verbose, _ := cmd.Flags().GetBool("verbose")
-			// output, _ := cmd.Flags().GetString("output")
-			filename := args[0]
 
-			tiles, frequencyTiles, err := Parse(filename, transformations, Verbose)
+			img := i.Open(filename, Verbose)
+
+			tiles, frequencyTiles, err := parse(img, parseConfig, transformations, Verbose)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error opening file: %s\n", err.Error())
 				os.Exit(1)
@@ -302,22 +225,17 @@ func init() {
 				outputTable(frequencyTiles)
 			}
 
-			tileset := createTileset(frequencyTiles)
-
-			err = imaging.Save(tileset, Output)
-			if err != nil {
-				if strings.Contains(err.Error(), "unsupported image format") {
-					fmt.Fprintf(os.Stderr, "Error: the tileset could not be saved because the output extension is invalid. %s\n", ValidOutputExtensionsMessage)
-					os.Exit(1)
-				}
-				fmt.Fprintf(os.Stderr, "Error saving file: %s\n", err.Error())
-				os.Exit(1)
+			ts := i.NewTilesetConfigFromParseConfig(parseConfig)
+			for _, frequencyTile := range frequencyTiles {
+				ts.TileImages = append(ts.TileImages, frequencyTile.Image)
 			}
+
+			tilesetImage := i.WriteTileset(&ts)
+			i.Save(tilesetImage, Output, Verbose)
 		},
 	}
-	parseCmd.Flags().Uint16VarP(&xOffset, "x-offset", "x", 0, "start at this x coordinate (default 0)")
-	parseCmd.Flags().Uint16VarP(&yOffset, "y-offset", "y", 0, "start at this y coordinate (default 0)")
-	parseCmd.Flags().Uint16VarP(&tileSize, "size", "s", 16, "tile size to parse. Tiles are square")
+	parseCmd.Flags().IntVarP(&xOffset, "x-offset", "x", 0, "start at this x coordinate (default 0)")
+	parseCmd.Flags().IntVarP(&yOffset, "y-offset", "y", 0, "start at this y coordinate (default 0)")
 	parseCmd.Flags().BoolVarP(&transform, "transform", "t", false, "allow tiles to be flipped and rotated (default false)")
 
 }

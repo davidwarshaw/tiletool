@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/disintegration/imaging"
+
+	i "github.com/davidwarshaw/tiletool/cmd/internal"
 )
 
 type imageTest struct {
@@ -31,10 +33,11 @@ func TestImage(t *testing.T) {
 				os.Exit(1)
 			}
 
-			nrgba := imageToNRGBA(img)
+			nrgba := i.ImageToNRGBA(img)
+			parseConfig := i.ParseConfig{TileWidth: 16, TileHeight: 16, XOffset: 0, YOffset: 0}
 
 			for _, transformation := range tc.transformations {
-				crops := cropTiles(nrgba, 16, 16)
+				crops := i.CropTiles(nrgba, parseConfig)
 				for j, crop := range crops {
 					cropHash := hashNrgba(crop)
 					transformed := transformCrop(transformation, crop)
