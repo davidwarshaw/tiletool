@@ -150,7 +150,7 @@ func parse(img *image.NRGBA, parseConfig i.ParseConfig, transformations []string
 		offsetSize := fmt.Sprintf("%dx%d", xOffset, yOffset)
 		fmt.Printf("Parsing %s image (offset by %s) for %s tiles with %s remainder\n", imgSize, offsetSize, tileSize, leftOverSize)
 	}
-	tiles := i.CropTiles(img, parseConfig)
+	tiles := parseConfig.CropTiles(img)
 
 	frequencyTiles := computeFreq(img, tiles, transformations)
 
@@ -203,8 +203,8 @@ func init() {
 			filename := args[0]
 
 			parseConfig := i.ParseConfig{
-				TileWidth:  tileSize,
-				TileHeight: tileSize,
+				TileWidth:  tc.TileWidth,
+				TileHeight: tc.TileHeight,
 				XOffset:    xOffset,
 				YOffset:    yOffset,
 			}
@@ -225,12 +225,11 @@ func init() {
 				outputTable(frequencyTiles)
 			}
 
-			ts := i.NewTilesetConfigFromParseConfig(parseConfig)
 			for _, frequencyTile := range frequencyTiles {
-				ts.TileImages = append(ts.TileImages, frequencyTile.Image)
+				tc.TileImages = append(tc.TileImages, frequencyTile.Image)
 			}
 
-			tilesetImage := i.WriteTileset(&ts)
+			tilesetImage := tc.ToImage()
 			i.Save(tilesetImage, Output, Verbose)
 		},
 	}

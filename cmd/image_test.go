@@ -37,7 +37,7 @@ func TestImage(t *testing.T) {
 			parseConfig := i.ParseConfig{TileWidth: 16, TileHeight: 16, XOffset: 0, YOffset: 0}
 
 			for _, transformation := range tc.transformations {
-				crops := i.CropTiles(nrgba, parseConfig)
+				crops := parseConfig.CropTiles(nrgba)
 				for j, crop := range crops {
 					cropHash := hashNrgba(crop)
 					transformed := transformCrop(transformation, crop)
